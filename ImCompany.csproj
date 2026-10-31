@@ -7,9 +7,12 @@
     <AssemblyName>ImCompany</AssemblyName>
     <Product>ImCompany</Product>
     <Version>1.1.0</Version>
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;publish*/**;data/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;publish*/**;data/**;github-ready/**</DefaultItemExcludes>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />

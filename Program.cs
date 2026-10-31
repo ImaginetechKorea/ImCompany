@@ -9,6 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 
 var contentRoot = File.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot", "index.html")) ? AppContext.BaseDirectory : Directory.GetCurrentDirectory();
+if (!File.Exists(Path.Combine(contentRoot, "wwwroot", "index.html")))
+{
+    Console.Error.WriteLine("프로그램 화면 파일을 찾을 수 없습니다. 배포 ZIP을 모두 압축 해제한 폴더 또는 publish 폴더에서 ImCompany.exe를 실행하세요.");
+    Environment.ExitCode = 1;
+    return;
+}
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = contentRoot });
 var port = int.TryParse(builder.Configuration["port"], out var configuredPort) ? configuredPort : 5274;
 Guard.Require(port is >= 1024 and <= 65535, "포트 범위를 확인해 주세요.");
