@@ -29,6 +29,7 @@ builder.Services.AddDbContext<AppDb>(o => o.UseSqlite($"Data Source={paths.Datab
 builder.Services.AddScoped<ActorContext>();
 builder.Services.AddScoped<BusinessService>();
 builder.Services.AddScoped<PurchaseService>();
+builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<StorageService>();
 builder.Services.AddScoped<ToolService>();
 builder.Services.AddScoped<AiService>();
@@ -85,8 +86,11 @@ app.Use(async (ctx, next) =>
     finally { if (locked) requests.Release(); }
 });
 app.UseDefaultFiles(); app.UseStaticFiles();
-app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.1.1" });
+app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.2.0" });
 app.MapGet("/api/state", (BusinessService s) => s.State());
+app.MapPost("/api/assets", (AssetInput input, AssetService service) => service.Save(input));
+app.MapPut("/api/assets/{id:long}", (long id, AssetInput input, AssetService service) => service.Save(input, id));
+app.MapPost("/api/assets/{id:long}/delete", (long id, AssetDeleteInput input, AssetService service) => service.Delete(id, input));
 app.MapGet("/api/orders/{id:long}/financial", (long id, BusinessService s) => s.Financial(id));
 app.MapPost("/api/customers", (Customer c, BusinessService s) => s.SaveCustomer(c));
 app.MapPut("/api/customers/{id:long}", (long id, Customer c, BusinessService s) => s.SaveCustomer(c, id));
@@ -163,6 +167,7 @@ app.MapPost("/api/ai/customer-drafts/{id}/confirm", (string id, AiCustomerConfir
 app.MapPost("/api/ai/business-sources/{type}/{id:long}", (string type, long id, AiSourceInput input, AiWorkspace workspace, BusinessService s, ActorContext actor) => workspace.AttachBusinessSources(type, id, input.FileIds, s, actor));
 app.MapGet("/api/ai/operations/{key}", async (string key, AppDb db) => { Guard.Require(Guid.TryParse(key, out _), "요청 식별자를 확인해 주세요."); var receipt = Guard.Found(await db.Receipts.AsNoTracking().FirstOrDefaultAsync(x => x.Key == key)); Guard.Require(receipt.Operation is "CreateOrder" or "CreateInvoiceDraft" or "CreatePayment" or "CreateFulfillment" or "PurchaseOrderSave" or "PurchaseReceipt" or "PurchaseBill" or "PurchasePayment", "조회할 수 없는 요청입니다.", "FORBIDDEN"); return new { receipt.Operation, receipt.RecordId }; });
 app.MapGet("/api/print/{type}/{id:long}", async (string type, long id, DocumentService d) => Results.Content(await d.Html(type, id), "text/html", Encoding.UTF8));
+app.MapGet("/api/asset-expenses/{year:int}/excel", async (int year, DocumentService d) => Results.File(await d.AssetExpenseExcel(year), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ImCompany_자산_필요경비검토_{year}.xlsx"));
 app.MapGet("/api/export/{kind}", async (string kind, DocumentService d) => Results.File(await d.Excel(kind), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ImCompany_{kind}_{BusinessService.Today:yyyyMMdd}.xlsx"));
 app.MapMcp("/mcp");
 app.Lifetime.ApplicationStarted.Register(() =>

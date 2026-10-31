@@ -85,7 +85,7 @@ public class StorageService(DataPaths paths, SettingsStore settings, AppDb db, W
     public static string Hash(string path) { using var f = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(f)); }
     async Task Exists(string type, long id)
     {
-        bool exists = type switch { "Customer" => await db.Customers.AnyAsync(x => x.Id == id), "Quotation" => await db.Quotations.AnyAsync(x => x.Id == id), "SalesOrder" => await db.Orders.AnyAsync(x => x.Id == id), "Invoice" => await db.Invoices.AnyAsync(x => x.Id == id), "Payment" => await db.Payments.AnyAsync(x => x.Id == id), "Fulfillment" => await db.Fulfillments.AnyAsync(x => x.Id == id), "PurchaseOrder" => await db.PurchaseOrders.AnyAsync(x => x.Id == id), _ => false };
+        bool exists = type switch { "Customer" => await db.Customers.AnyAsync(x => x.Id == id), "Quotation" => await db.Quotations.AnyAsync(x => x.Id == id), "SalesOrder" => await db.Orders.AnyAsync(x => x.Id == id), "Invoice" => await db.Invoices.AnyAsync(x => x.Id == id), "Payment" => await db.Payments.AnyAsync(x => x.Id == id), "Fulfillment" => await db.Fulfillments.AnyAsync(x => x.Id == id), "PurchaseOrder" => await db.PurchaseOrders.AnyAsync(x => x.Id == id), "Asset" => await db.Assets.AnyAsync(x => x.Id == id && x.Status != "Deleted"), _ => false };
         Guard.Require(exists, "첨부 대상이 없습니다.", "NOT_FOUND");
     }
     public async Task<Attachment> Upload(string type, long id, IFormFile file)

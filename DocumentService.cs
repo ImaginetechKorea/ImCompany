@@ -41,13 +41,44 @@ public class DocumentService(AppDb db, SettingsStore settings)
         var range = sheet.Range(1, 1, Math.Max(row - 1, 1), 8); range.Style.Font.FontName = "맑은 고딕"; range.Style.Font.FontSize = 11; sheet.Row(1).Style.Fill.BackgroundColor = XLColor.FromHtml("173E35"); sheet.Row(1).Style.Font.FontColor = XLColor.White; sheet.Row(1).Style.Font.Bold = true; sheet.SheetView.FreezeRows(1); sheet.Columns().AdjustToContents(12, 65); sheet.Column(3).Width = 45; range.Style.Alignment.WrapText = true; if (kind != "customers") sheet.Columns(6, 8).Style.NumberFormat.Format = "#,##0"; range.SetAutoFilter(); sheet.PageSetup.PageOrientation = XLPageOrientation.Landscape; sheet.PageSetup.FitToPages(1, 0);
         using var stream = new MemoryStream(); book.SaveAs(stream); return stream.ToArray();
     }
+    // 사용자 선택에 따른 세무사 전달용 검토자료이며 신고 확정 명세서가 아닙니다.
+    public async Task<byte[]> AssetExpenseExcel(int year)
+    {
+        Guard.Require(year is >= 1900 and <= 9998, "과세연도를 확인해 주세요.");
+        var start = new DateOnly(year, 1, 1); var end = new DateOnly(year + 1, 1, 1);
+        var assets = await db.Assets.AsNoTracking().Where(a => a.Status != "Deleted" && a.DepreciationMethod == "ImmediateExpense" && a.DepreciationStartDate >= start && a.DepreciationStartDate < end).OrderBy(a => a.DepreciationStartDate).ThenBy(a => a.Id).ToListAsync();
+        var evidence = (await db.Attachments.AsNoTracking().Where(x => x.EntityType == "Asset" && x.Status == "Active").ToListAsync()).GroupBy(x => x.EntityId).ToDictionary(g => g.Key, g => string.Join(", ", g.Select(x => x.OriginalFileName)));
+        using var book = new XLWorkbook(); var sheet = book.AddWorksheet("즉시상각 검토");
+        sheet.Cell(1, 1).Value = $"{year}년 귀속 자산 필요경비 검토 목록 · 세무사 전달용"; sheet.Range(1, 1, 1, 16).Merge().Style.Font.Bold = true;
+        sheet.Cell(2, 1).Value = "사용자가 선택한 검토 목록입니다. 필요경비 인정 여부·계상 시기와 금액은 증빙 및 신고 방식에 따라 세무사와 확인하세요. 증빙 원본은 별도로 전달해 주세요."; sheet.Range(2, 1, 2, 16).Merge().Style.Alignment.WrapText = true; sheet.Row(2).Height = 32;
+        string[] headers = ["자산명", "분류", "모델", "구입일", "사용 시작일", "구입처", "증빙 종류", "총 결제금액", "공급가액", "부가세", "매입세액 공제 여부", "업무사용 비율(%)", "취득금액", "즉시상각 검토금액", "첨부파일명", "메모"];
+        for (int i = 0; i < headers.Length; i++) sheet.Cell(4, i + 1).Value = headers[i]; int row = 5;
+        foreach (var a in assets)
+        {
+            sheet.Cell(row, 1).Value = a.Name; sheet.Cell(row, 2).Value = a.Category; sheet.Cell(row, 3).Value = a.Model;
+            sheet.Cell(row, 4).Value = a.PurchaseDate?.ToString("yyyy-MM-dd") ?? ""; sheet.Cell(row, 5).Value = a.DepreciationStartDate?.ToString("yyyy-MM-dd") ?? "";
+            sheet.Cell(row, 6).Value = a.Vendor; sheet.Cell(row, 7).Value = a.EvidenceType;
+            if (a.TotalPaid is long total) sheet.Cell(row, 8).Value = total;
+            if (a.SupplyValue is long supply) sheet.Cell(row, 9).Value = supply;
+            if (a.VatValue is long vat) sheet.Cell(row, 10).Value = vat;
+            sheet.Cell(row, 11).Value = a.InputVatDeductible is bool deduct ? (deduct ? "공제" : "공제 안 함") : "미입력";
+            if (a.BusinessUseBps is int bps) sheet.Cell(row, 12).Value = bps / 100m;
+            sheet.Cell(row, 13).Value = a.PurchaseAmount; if (a.ImmediateExpenseAmount is long expense) sheet.Cell(row, 14).Value = expense;
+            sheet.Cell(row, 15).Value = evidence.GetValueOrDefault(a.Id, "없음"); sheet.Cell(row, 16).Value = a.Memo; row++;
+        }
+        sheet.Cell(row, 13).Value = "검토금액 합계"; sheet.Cell(row, 14).Value = assets.Sum(a => a.ImmediateExpenseAmount ?? 0);
+        sheet.Row(4).Style.Font.Bold = true; sheet.Row(4).Style.Fill.BackgroundColor = XLColor.FromHtml("173E35"); sheet.Row(4).Style.Font.FontColor = XLColor.White;
+        sheet.Columns(8, 10).Style.NumberFormat.Format = "#,##0"; sheet.Columns(13, 14).Style.NumberFormat.Format = "#,##0"; sheet.SheetView.FreezeRows(4); sheet.Columns().AdjustToContents(12, 40); sheet.Column(15).Width = 35; sheet.Column(16).Width = 35;
+        using var stream = new MemoryStream(); book.SaveAs(stream); return stream.ToArray();
+    }
+
     // 읽기용 엑셀 사본입니다. 첨부파일과 복원용 원본 백업은 별도로 보관합니다.
     public async Task<byte[]> ExcelBackup()
     {
         using var transaction = await db.Database.BeginTransactionAsync();
         using var book = new XLWorkbook();
         var names = new Dictionary<string, string> {
-            ["Id"]="고유번호", ["SupplierId"]="공급처 고유번호", ["SalesOrderId"]="연결 수주 고유번호", ["Title"]="발주명", ["PurchaseOrderId"]="발주 고유번호", ["SupplierSnapshotJson"]="공급처 저장내역", ["Version"]="버전", ["CreatedAtUtc"]="등록일시(UTC)", ["UpdatedAtUtc"]="수정일시(UTC)", ["Code"]="코드", ["CompanyName"]="거래처명", ["BusinessNumber"]="사업자번호", ["CeoName"]="대표자", ["BusinessType"]="업태", ["BusinessItem"]="종목", ["Address"]="주소", ["ContactName"]="담당자", ["Phone"]="전화", ["Email"]="이메일", ["Memo"]="메모", ["IsActive"]="사용 중", ["IsPreferred"]="주거래처", ["Number"]="문서번호", ["CustomerId"]="거래처 고유번호", ["ProjectName"]="프로젝트명", ["SiteName"]="현장명", ["Date"]="일자", ["DueDate"]="기한", ["SupplyAmount"]="공급가액", ["VatAmount"]="부가세", ["TotalAmount"]="합계", ["Status"]="상태", ["SnapshotJson"]="거래처 저장내역", ["ItemsJson"]="품목 상세", ["PolicyJson"]="금액 계산 기준", ["QuotationId"]="견적 고유번호", ["CustomerPONo"]="고객 발주번호", ["PaymentTermsJson"]="지급 조건", ["OrderId"]="수주 고유번호", ["InvoiceType"]="청구 유형", ["TaxInvoiceIssued"]="세금계산서 발급 기록", ["TaxInvoiceDate"]="세금계산서 작성일", ["TaxApprovalNo"]="세금계산서 승인번호", ["ConfirmedAtUtc"]="확정일시(UTC)", ["Type"]="작업 종류", ["PlannedDate"]="예정일", ["CompletedDate"]="완료일", ["Description"]="작업 내용", ["Quantity"]="수량", ["Amount"]="금액", ["BankName"]="은행", ["AccountMasked"]="계좌", ["Reference"]="입금자·참조", ["PaymentId"]="입금 고유번호", ["InvoiceId"]="청구 고유번호", ["ReversedAtUtc"]="배분취소일시(UTC)"
+            ["Vendor"]="구입처", ["EvidenceType"]="증빙 종류", ["TotalPaid"]="총 결제금액", ["SupplyValue"]="공급가액", ["VatValue"]="부가세", ["InputVatDeductible"]="매입세액 공제", ["BusinessUseBps"]="업무사용 비율(0.01%)", ["ImmediateExpenseAmount"]="즉시상각 검토금액", ["DepreciationMethod"]="상각 방법", ["DepreciationRateBps"]="연 상각률(0.01%)", ["DepreciationStartDate"]="사용 시작일", ["UsefulLifeYears"]="내용연수(년)", ["ResidualValue"]="잔존가액", ["Name"]="자산명", ["Category"]="분류", ["Model"]="모델명", ["SerialNumber"]="일련번호", ["PurchaseDate"]="구입일", ["PurchaseAmount"]="구입금액", ["Location"]="보관 장소", ["Custodian"]="담당자", ["Id"]="고유번호", ["SupplierId"]="공급처 고유번호", ["SalesOrderId"]="연결 수주 고유번호", ["Title"]="발주명", ["PurchaseOrderId"]="발주 고유번호", ["SupplierSnapshotJson"]="공급처 저장내역", ["Version"]="버전", ["CreatedAtUtc"]="등록일시(UTC)", ["UpdatedAtUtc"]="수정일시(UTC)", ["Code"]="코드", ["CompanyName"]="거래처명", ["BusinessNumber"]="사업자번호", ["CeoName"]="대표자", ["BusinessType"]="업태", ["BusinessItem"]="종목", ["Address"]="주소", ["ContactName"]="담당자", ["Phone"]="전화", ["Email"]="이메일", ["Memo"]="메모", ["IsActive"]="사용 중", ["IsPreferred"]="주거래처", ["Number"]="문서번호", ["CustomerId"]="거래처 고유번호", ["ProjectName"]="프로젝트명", ["SiteName"]="현장명", ["Date"]="일자", ["DueDate"]="기한", ["SupplyAmount"]="공급가액", ["VatAmount"]="부가세", ["TotalAmount"]="합계", ["Status"]="상태", ["SnapshotJson"]="거래처 저장내역", ["ItemsJson"]="품목 상세", ["PolicyJson"]="금액 계산 기준", ["QuotationId"]="견적 고유번호", ["CustomerPONo"]="고객 발주번호", ["PaymentTermsJson"]="지급 조건", ["OrderId"]="수주 고유번호", ["InvoiceType"]="청구 유형", ["TaxInvoiceIssued"]="세금계산서 발급 기록", ["TaxInvoiceDate"]="세금계산서 작성일", ["TaxApprovalNo"]="세금계산서 승인번호", ["ConfirmedAtUtc"]="확정일시(UTC)", ["Type"]="작업 종류", ["PlannedDate"]="예정일", ["CompletedDate"]="완료일", ["Description"]="작업 내용", ["Quantity"]="수량", ["Amount"]="금액", ["BankName"]="은행", ["AccountMasked"]="계좌", ["Reference"]="입금자·참조", ["PaymentId"]="입금 고유번호", ["InvoiceId"]="청구 고유번호", ["ReversedAtUtc"]="배분취소일시(UTC)"
         };
         void AddSheet<T>(string title, IEnumerable<T> rows)
         {
@@ -73,6 +104,7 @@ public class DocumentService(AppDb db, SettingsStore settings)
             sheet.SheetView.FreezeRows(1); sheet.Range(1, 1, Math.Max(1, row - 1), properties.Length).SetAutoFilter(); sheet.Columns().AdjustToContents(12, 45);
         }
         var info = book.AddWorksheet("안내"); info.Cell("A1").Value = "ImCompany 엑셀 업무자료"; info.Cell("A1").Style.Font.Bold = true; info.Cell("A2").Value = "생성일시: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); info.Cell("A3").Value = "이 엑셀 파일에는 업무자료와 복원 데이터가 함께 들어 있습니다."; info.Cell("A4").Value = "복원 데이터가 유지되도록 백업 파일은 엑셀에서 편집하지 마세요."; info.Column(1).Width = 90;
+        AddSheet("자산", await db.Assets.AsNoTracking().Where(x => x.Status != "Deleted").ToListAsync());
         AddSheet("거래처", await db.Customers.AsNoTracking().ToListAsync());
         AddSheet("수주", await db.Orders.AsNoTracking().ToListAsync());
         AddSheet("납품·작업", await db.Fulfillments.AsNoTracking().ToListAsync());

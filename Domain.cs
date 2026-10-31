@@ -132,8 +132,36 @@ public class RequestReceipt
     public string Operation { get; set; } = "";
     public long RecordId { get; set; }
 }
+public class Asset : Record
+{
+    public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string SerialNumber { get; set; } = "";
+    public DateOnly? PurchaseDate { get; set; }
+    public long PurchaseAmount { get; set; }
+    public DateOnly? DepreciationStartDate { get; set; }
+    public int? UsefulLifeYears { get; set; }
+    public long ResidualValue { get; set; }
+    public string DepreciationMethod { get; set; } = "None";
+    public long? ImmediateExpenseAmount { get; set; }
+    public int? DepreciationRateBps { get; set; }
+    public string Vendor { get; set; } = "";
+    public string EvidenceType { get; set; } = "";
+    public long? TotalPaid { get; set; }
+    public long? SupplyValue { get; set; }
+    public long? VatValue { get; set; }
+    public bool? InputVatDeductible { get; set; }
+    public int? BusinessUseBps { get; set; }
+    public string Location { get; set; } = "";
+    public string Custodian { get; set; } = "";
+    public string Status { get; set; } = "InUse";
+    public long? OrderId { get; set; }
+    public string Memo { get; set; } = "";
+}
 public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
+    public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Quotation> Quotations => Set<Quotation>();
     public DbSet<SalesOrder> Orders => Set<SalesOrder>();
@@ -153,7 +181,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         // Separate tables keep document ownership and foreign keys explicit.
         m.Ignore<Document>();
         m.Ignore<Record>();
-        foreach (var t in new[] { typeof(Customer), typeof(Quotation), typeof(SalesOrder), typeof(Invoice), typeof(Payment), typeof(Allocation), typeof(Fulfillment), typeof(Attachment), typeof(PurchaseOrder), typeof(PurchaseReceipt), typeof(PurchaseBill), typeof(PurchaseDisbursement) })
+        foreach (var t in new[] { typeof(Customer), typeof(Quotation), typeof(SalesOrder), typeof(Invoice), typeof(Payment), typeof(Allocation), typeof(Fulfillment), typeof(Attachment), typeof(PurchaseOrder), typeof(PurchaseReceipt), typeof(PurchaseBill), typeof(PurchaseDisbursement), typeof(Asset) })
         {
             m.Entity(t).HasKey("Id");
             m.Entity(t).Property("Version").IsConcurrencyToken();

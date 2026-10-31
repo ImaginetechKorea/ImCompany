@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'), fs=require('node:fs');
+const script=fs.readFileSync('wwwroot/assets.js','utf8');
+const calc=new Function('state',script.slice(script.indexOf('function assetDepreciation('),script.indexOf('function assetPage()'))+'; return assetDepreciation;')({today:'2026-12-31'});
+const a={status:'InUse',depreciationStartDate:'2026-01-10',depreciationMethod:'StraightLine',usefulLifeYears:5,purchaseAmount:1200000,residualValue:0};
+assert.deepEqual(calc(a,'2026-01-01'),{accumulated:0,book:1200000,months:0});
+assert.deepEqual(calc(a,'2026-12-31'),{accumulated:240000,book:960000,months:12});
+assert.equal(calc(a,'2032-12-31').book,0);
+assert.equal(calc({...a,residualValue:200000},'2032-12-31').book,200000);
+const d={...a,depreciationMethod:'DecliningBalance',depreciationRateBps:2000};
+assert.equal(calc(d,'2026-12-31').book,960000);
+assert.equal(calc(d,'2027-12-31').book,768000);
+assert.equal(calc({...d,depreciationStartDate:'2026-07-01'},'2026-12-31').book,1080000);
+assert.equal(calc({...d,residualValue:1100000},'2028-12-31').book,1100000);
+assert.equal(calc({...a,status:'Disposed'},'2026-12-31'),null);
+console.log('정액법·정률법·월할·잔존가액·처분 테스트 통과');
