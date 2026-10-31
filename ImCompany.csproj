@@ -6,7 +6,7 @@
     <RootNamespace>ImOrder</RootNamespace>
     <AssemblyName>ImCompany</AssemblyName>
     <Product>ImCompany</Product>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;publish*/**;data/**;github-ready/**</DefaultItemExcludes>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>

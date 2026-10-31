@@ -19,7 +19,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = ar
 var port = int.TryParse(builder.Configuration["port"], out var configuredPort) ? configuredPort : 5274;
 Guard.Require(port is >= 1024 and <= 65535, "포트 범위를 확인해 주세요.");
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
-var paths = new DataPaths(builder.Configuration["data-root"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImCompany", "ImOrder"));
+var paths = new DataPaths(builder.Configuration["data-root"] ?? DataPaths.DefaultRoot());
 using var instance = new Mutex(true, "Local\\ImOrder-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(paths.Root.ToUpperInvariant())))[..20], out var firstInstance);
 if (!firstInstance) { if (!args.Contains("--no-browser")) Process.Start(new ProcessStartInfo($"http://127.0.0.1:{port}") { UseShellExecute = true }); return; }
 builder.Services.AddSingleton(paths);
@@ -85,7 +85,7 @@ app.Use(async (ctx, next) =>
     finally { if (locked) requests.Release(); }
 });
 app.UseDefaultFiles(); app.UseStaticFiles();
-app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.1.0" });
+app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.1.1" });
 app.MapGet("/api/state", (BusinessService s) => s.State());
 app.MapGet("/api/orders/{id:long}/financial", (long id, BusinessService s) => s.Financial(id));
 app.MapPost("/api/customers", (Customer c, BusinessService s) => s.SaveCustomer(c));
@@ -137,8 +137,15 @@ app.MapPost("/api/backups/{name}/restore", async (string name, DocumentService d
         await storage.RestorePath(temp, name); return new { restored = true };
     } finally { if (File.Exists(temp)) File.Delete(temp); }
 });
+app.MapPost("/api/backups/{name}/delete", (string name) => {
+    Guard.Require(Path.GetFileName(name) == name && name.StartsWith("ImCompany_Excel_", StringComparison.Ordinal) && name.EndsWith(".xlsx", StringComparison.Ordinal), "백업 파일명이 잘못되었습니다.");
+    var file = Path.Combine(paths.Backups, name);
+    Guard.Require(File.Exists(file), "삭제할 백업 파일을 찾을 수 없습니다.", "NOT_FOUND");
+    File.Delete(file);
+    return Results.Ok(new { deleted = true });
+});
 app.MapGet("/api/backups/{name}", (string name) => { Guard.Require(Path.GetFileName(name) == name && name.StartsWith("ImCompany_Excel_") && name.EndsWith(".xlsx"), "백업 파일명이 잘못되었습니다."); return Results.File(File.ReadAllBytes(Path.Combine(paths.Backups, name)), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name); });
-app.MapPost("/api/open-data-folder", () => { Process.Start(new ProcessStartInfo("explorer.exe", paths.Root) { UseShellExecute = true }); return Results.Ok(); });
+app.MapPost("/api/open-data-folder", async () => { var opened = await FolderOpener.Open(paths.Backups); return Results.Ok(new { opened }); });
 app.MapPost("/api/shutdown", (IHostApplicationLifetime lifetime) => { _ = Task.Run(async () => { await Task.Delay(500); lifetime.StopApplication(); }); return new { stopped = true }; });
 app.MapPut("/api/settings", async (AppSettings input, SettingsStore s, WriteGate gate) => { await gate.Semaphore.WaitAsync(); try { s.Save(input); } finally { gate.Semaphore.Release(); } return s.Read(); });
 app.MapPost("/api/secrets/{name}", async (string name, SecretInput input, SettingsStore s, WriteGate gate) => { await gate.Semaphore.WaitAsync(); try { s.SetSecret(name, input.Value); } finally { gate.Semaphore.Release(); } return Results.Ok(); });

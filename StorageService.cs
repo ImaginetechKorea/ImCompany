@@ -10,6 +10,42 @@ namespace ImOrder;
 public class DataPaths
 {
     public string Root { get; }
+    public static string DefaultRoot() => MigrateRoot(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImCompany"));
+    public static string MigrateRoot(string parent)
+    {
+        var current = Path.Combine(parent, "ImCompany");
+        var legacy = Path.Combine(parent, "ImOrder");
+        if (Directory.Exists(current))
+        {
+            if (!File.Exists(Path.Combine(current, "imorder.db")) && File.Exists(Path.Combine(legacy, "imorder.db"))) throw new IOException("새 저장 폴더에 업무자료가 없습니다. 기존 자료를 확인한 후 다시 실행해 주세요.");
+            return current;
+        }
+        if (!File.Exists(Path.Combine(legacy, "imorder.db"))) return current;
+        var mutexName = "Local\\ImOrder-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(legacy).ToUpperInvariant())))[..20];
+        using var oldLock = new Mutex(true, mutexName, out var available);
+        if (!available) throw new InvalidOperationException("이전 ImCompany 프로그램을 종료한 후 다시 실행해 주세요. 기존 자료는 변경되지 않았습니다.");
+        var temporary = Path.Combine(parent, ".ImCompany-copy-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporary);
+        CopyDirectory(legacy, temporary);
+        if (!File.Exists(Path.Combine(temporary, "imorder.db"))) throw new IOException("기존 업무자료를 복사하지 못했습니다. 기존 자료는 변경되지 않았습니다.");
+        if (!Directory.Exists(current)) Directory.Move(temporary, current);
+        return current;
+    }
+    private static void CopyDirectory(string source, string destination)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(source))
+        {
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) throw new IOException("연결된 폴더가 있어 자동 이전을 중단했습니다.");
+            var target = Path.Combine(destination, Path.GetFileName(directory));
+            Directory.CreateDirectory(target);
+            CopyDirectory(directory, target);
+        }
+        foreach (var file in Directory.EnumerateFiles(source))
+        {
+            if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new IOException("연결된 파일이 있어 자동 이전을 중단했습니다.");
+            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+        }
+    }
     public string Database => Path.Combine(Root, "imorder.db");
     public string Backups => Path.Combine(Root, "Backup");
     public string Temp => Path.Combine(Root, "Temp");
