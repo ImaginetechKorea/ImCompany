@@ -86,7 +86,7 @@ app.Use(async (ctx, next) =>
     finally { if (locked) requests.Release(); }
 });
 app.UseDefaultFiles(); app.UseStaticFiles();
-app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.2.1" });
+app.MapGet("/api/bootstrap", (SettingsStore s) => new { token = csrf, settings = s.Read(), dataRoot = paths.Root, aiConfigured = s.Secret("ai") != "", version = "1.2.2" });
 app.MapGet("/api/state", (BusinessService s) => s.State());
 app.MapPost("/api/assets", (AssetInput input, AssetService service) => service.Save(input));
 app.MapPut("/api/assets/{id:long}", (long id, AssetInput input, AssetService service) => service.Save(input, id));
