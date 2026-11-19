@@ -14,3 +14,5 @@
 .toolbar input[type=checkbox],.project-search input[type=checkbox]{width:auto;min-width:0;vertical-align:middle}
 
 .vat-primary{display:block;font-size:14px;font-weight:700}
+
+.record-link{text-decoration:underline;text-underline-offset:3px;color:#185c4c}.record-link:focus-visible{outline:2px solid currentColor;outline-offset:2px}
